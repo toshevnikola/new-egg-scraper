@@ -1,5 +1,8 @@
-from bs4 import BeautifulSoup
+import os
+import time
+import csv
 import requests
+from bs4 import BeautifulSoup
 
 
 def scrape_single_page_product_urls(page_number: int, page_size: int = 96) -> list[str]:
@@ -21,7 +24,7 @@ def scrape_single_page_product_urls(page_number: int, page_size: int = 96) -> li
     return [product.find_next("a").get("href") for product in product_list]
 
 
-def scrape_product_urls(product_count: int) -> list[str]:
+def scrape_product_urls(product_count: int, page_size: int) -> list[str]:
     """
     Retrieve URLs for <product_count> products
 
@@ -30,6 +33,7 @@ def scrape_product_urls(product_count: int) -> list[str]:
 
     Args:
         product_count: number of products to retrieve URLs for
+        page_size: number of products shown per page
 
     Returns:
         list of product urls with max length of <product_count>
@@ -38,7 +42,10 @@ def scrape_product_urls(product_count: int) -> list[str]:
     total_scraped_urls = 0
     page_number = 1
     while total_scraped_urls < product_count:
-        page_product_urls = scrape_single_page_product_urls(page_number)
+        time.sleep(1)
+        page_product_urls = scrape_single_page_product_urls(
+            page_number=page_number, page_size=page_size
+        )
         product_urls.extend(page_product_urls)
         total_scraped_urls += len(page_product_urls)
         page_number += 1
@@ -47,5 +54,40 @@ def scrape_product_urls(product_count: int) -> list[str]:
     return product_urls[:product_count]
 
 
+def store_urls_as_csv(urls: list[str], csv_file_path: str, overwrite_file: bool = True):
+    parent_dir_name = os.path.dirname(csv_file_path)
+    os.makedirs(parent_dir_name, exist_ok=True)
+
+    if os.path.exists(csv_file_path) and not overwrite_file:
+        raise FileExistsError(
+            "File with the same path already exists. Set overwrite_file=True to overwrite it."
+        )
+    with open(csv_file_path, "w") as f:
+        writer = csv.writer(
+            f,
+        )
+        writer.writerow(["product_url"])
+        writer.writerows([[url] for url in urls])
+
+
+def load_product_urls_from_csv(file_path: str) -> tuple[str, list[str]]:
+    with open(file_path, "r") as f:
+        reader = csv.reader(
+            f,
+        )
+        column_name = next(reader)[0]
+        product_urls = [product[0] for product in reader]
+    return column_name, product_urls
+
+
 if __name__ == "__main__":
-    all_urls = scrape_product_urls(product_count=500)
+    PRODUCT_COUNT = 25
+    FILE_PATH = f"data/{str(PRODUCT_COUNT)}_products.csv"
+    PAGE_SIZE = 32
+    all_urls = scrape_product_urls(product_count=PRODUCT_COUNT, page_size=PAGE_SIZE)
+    store_urls_as_csv(
+        all_urls,
+        csv_file_path=FILE_PATH,
+        overwrite_file=True,
+    )
+    column_name, product_urls = load_product_urls_from_csv(file_path=FILE_PATH)
