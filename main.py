@@ -1,8 +1,31 @@
+import logging
 import os
 import time
 import csv
+from dataclasses import dataclass
+from typing import Optional
+
 import requests
 from bs4 import BeautifulSoup
+
+logger = logging.Logger(name="logger", level="INFO")
+
+
+@dataclass
+class ProductInfo:
+    url: str
+    title: str
+    description: str
+    final_price: str
+    rating: Optional[float]
+    seller_name: str
+    main_image_url: str
+
+
+def get_page_structure(url: str) -> BeautifulSoup:
+    page_content = requests.get(url).content
+    soup = BeautifulSoup(page_content, "html.parser")
+    return soup
 
 
 def scrape_single_page_product_urls(page_number: int, page_size: int = 96) -> list[str]:
@@ -16,10 +39,9 @@ def scrape_single_page_product_urls(page_number: int, page_size: int = 96) -> li
     Returns:
         list of product urls
     """
-    page_content = requests.get(
-        f"https://www.newegg.com/Newegg-Deals/EventSaleStore/ID-9447/Page-{page_number}?PageSize={page_size}"
-    ).content
-    soup = BeautifulSoup(page_content, "html.parser")
+    soup = get_page_structure(
+        url=f"https://www.newegg.com/Newegg-Deals/EventSaleStore/ID-9447/Page-{page_number}?PageSize={page_size}"
+    )
     product_list = soup.find("div", {"id": "Product_List"})
     return [product.find_next("a").get("href") for product in product_list]
 
@@ -53,41 +75,82 @@ def scrape_product_urls(product_count: int, page_size: int) -> list[str]:
             break
     return product_urls[:product_count]
 
-
-def store_urls_as_csv(urls: list[str], csv_file_path: str, overwrite_file: bool = True):
+def append_product_info_to_csv(product_info: ProductInfo, csv_file_path: str):
     parent_dir_name = os.path.dirname(csv_file_path)
     os.makedirs(parent_dir_name, exist_ok=True)
+    file_exists = os.path.exists(csv_file_path)
+    with open(csv_file_path, "a") as f:
+        writer = csv.writer(f)
+        product_info_attr_dict = vars(product_info)
+        if not file_exists:
+            writer.writerow(list(product_info_attr_dict.keys()))
+        writer.writerows([product_info_attr_dict.values()])
 
-    if os.path.exists(csv_file_path) and not overwrite_file:
-        raise FileExistsError(
-            "File with the same path already exists. Set overwrite_file=True to overwrite it."
-        )
-    with open(csv_file_path, "w") as f:
-        writer = csv.writer(
-            f,
-        )
-        writer.writerow(["product_url"])
-        writer.writerows([[url] for url in urls])
+def get_product_description(soup: BeautifulSoup) -> str:
+    description_items = soup.find("div", {"class": "product-bullets"}).find_all("li")
+    return " ".join([item.text for item in description_items])
 
 
-def load_product_urls_from_csv(file_path: str) -> tuple[str, list[str]]:
-    with open(file_path, "r") as f:
-        reader = csv.reader(
-            f,
+def get_product_rating(soup: BeautifulSoup) -> str | None:
+    try:
+        review_title_attr = (
+            soup.find("div", {"class": "product-rating"}).find("i").attrs.get("title")
         )
-        column_name = next(reader)[0]
-        product_urls = [product[0] for product in reader]
-    return column_name, product_urls
+    except AttributeError:
+        logger.info("No reviews for product")
+        return "N/A"
+    if not review_title_attr:
+        return "N/A"
+    rating = review_title_attr.split(" out of ")[0]
+    try:
+        float(rating)
+        return rating
+    except ValueError:
+        return "N/A"
+
+
+def get_product_seller_name(soup: BeautifulSoup):
+
+    seller_name = soup.find("div", {"class": "product-seller"}).find("a").text
+    seller_name = seller_name.replace("Sold & Shipped by ", "")
+    return seller_name
+
+
+def scrape_product_details(url: str) -> ProductInfo:
+    soup = get_page_structure(url=url)
+    page_main_section = soup.find("div", {"class": "product-wrap"})
+    page_img_section = soup.find("div", {"class": "product-view"})
+    page_buy_section = soup.find("div", {"class": "product-buy-box"})
+
+    product_title = page_main_section.find("h1", {"class": "product-title"}).text
+    product_description = get_product_description(page_main_section)
+    product_rating = get_product_rating(page_main_section)
+
+    product_main_image_url = page_img_section.find(
+        "img", {"class": "product-view-img-original"}
+    ).attrs.get("src")
+
+    product_final_price = page_buy_section.find("li", {"class": "price-current"}).text
+    product_seller_name = get_product_seller_name(page_buy_section)
+
+    product_info = ProductInfo(
+        url=url,
+        title=product_title,
+        description=product_description,
+        final_price=product_final_price,
+        rating=product_rating,
+        seller_name=product_seller_name,
+        main_image_url=product_main_image_url,
+    )
+    return product_info
 
 
 if __name__ == "__main__":
-    PRODUCT_COUNT = 25
+    PRODUCT_COUNT = 500
     FILE_PATH = f"data/{str(PRODUCT_COUNT)}_products.csv"
-    PAGE_SIZE = 32
-    all_urls = scrape_product_urls(product_count=PRODUCT_COUNT, page_size=PAGE_SIZE)
-    store_urls_as_csv(
-        all_urls,
-        csv_file_path=FILE_PATH,
-        overwrite_file=True,
-    )
-    column_name, product_urls = load_product_urls_from_csv(file_path=FILE_PATH)
+    PAGE_SIZE = 96
+    product_urls = scrape_product_urls(product_count=PRODUCT_COUNT, page_size=PAGE_SIZE)
+    for ind, product_url in enumerate(product_urls):
+        product_info = scrape_product_details(product_url)
+        append_product_info_to_csv(product_info=product_info, csv_file_path=FILE_PATH)
+        time.sleep(0.2)
