@@ -1,8 +1,9 @@
 import argparse
 from datetime import datetime
 
-import scraper
 import settings
+
+import scraper
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Newegg scraper argument parser.")

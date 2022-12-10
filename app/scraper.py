@@ -2,13 +2,14 @@ import csv
 import os
 import time
 from dataclasses import dataclass
+from pprint import pprint
 
 import requests
-import settings
 from bs4 import BeautifulSoup
 from requests import HTTPError
 
-from logger import logger
+from app import settings
+from app.logger import logger
 
 
 @dataclass
@@ -87,9 +88,19 @@ def scrape_single_page_product_urls(page_number: int, page_size: int, requests_d
     """
     page_url = settings.NEWEGG_DEALS_PAGE_URL.format(page_number=page_number, page_size=page_size)
     soup = get_page_structure(page_url, requests_delay=requests_delay)
-
     product_list = soup.find("div", {"id": "Product_List"})
-    return [product.find_next("a").get("href") for product in product_list]
+    if not product_list:
+        logger.warning(f"Product list not available for page {page_url}")
+        return []
+
+    urls = []
+    pprint(product_list)
+    for product in product_list:
+        a_tag = product.find_next("a")
+        if a_tag:
+            urls.append(a_tag.get("href"))
+
+    return urls
 
 
 def scrape_product_urls(product_count: int, page_size: int, requests_delay: float, first_page_number: int) -> list[str]:
@@ -129,7 +140,7 @@ def scrape_product_urls(product_count: int, page_size: int, requests_delay: floa
         product_urls.extend(page_product_urls)
         total_scraped_urls += len(page_product_urls)
         page_number += 1
-        return product_urls[:product_count]
+    return product_urls[:product_count]
 
 
 def find_product_description(product_page_main_section: BeautifulSoup) -> str:
@@ -142,7 +153,11 @@ def find_product_description(product_page_main_section: BeautifulSoup) -> str:
     Returns:
         Text containing all the description items separated with white space
     """
-    description_items = product_page_main_section.find("div", {"class": "product-bullets"}).find_all("li")
+    try:
+        description_items = product_page_main_section.find("div", {"class": "product-bullets"}).find_all("li")
+    except Exception as e:
+        logger.warning(str(e))
+        description_items = []
     return " ".join([item.text for item in description_items])
 
 
@@ -160,8 +175,7 @@ def find_product_rating(product_page_main_section: BeautifulSoup) -> str:
         review_title_attr = (
             product_page_main_section.find("div", {"class": "product-rating"}).find("i").attrs.get("title")
         )
-    except AttributeError:
-        logger.info("No reviews for product")
+    except Exception:
         return "N/A"
     if not review_title_attr:
         return "N/A"
@@ -183,8 +197,12 @@ def find_product_seller_name(page_buy_section: BeautifulSoup):
     Returns:
         Name of the seller
     """
-    seller_name = page_buy_section.find("div", {"class": "product-seller"}).find("a").text
-    seller_name = seller_name.replace("Sold & Shipped by ", "")
+    try:
+        seller_name = page_buy_section.find("div", {"class": "product-seller"}).find("a").text
+        seller_name = seller_name.replace("Sold & Shipped by ", "")
+    except Exception as e:
+        logger.warning(str(e))
+        seller_name = "N/A"
     return seller_name
 
 
