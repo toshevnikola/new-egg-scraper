@@ -4,10 +4,10 @@ import time
 from dataclasses import dataclass
 
 import requests
+import settings
 from bs4 import BeautifulSoup
 from requests import HTTPError
 
-import settings
 from app import logger
 
 
