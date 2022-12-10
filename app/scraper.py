@@ -8,7 +8,7 @@ import settings
 from bs4 import BeautifulSoup
 from requests import HTTPError
 
-from app import logger
+from logger import logger
 
 
 @dataclass
@@ -17,12 +17,25 @@ class ProductDetails:
     title: str
     description: str
     final_price: str
-    rating: float | None
+    rating: str
     seller_name: str
     main_image_url: str
 
 
-def append_product_details_to_csv(product_details: ProductDetails, csv_file_path: str):
+def append_product_details_to_csv(product_details: ProductDetails, csv_file_path: str) -> None:
+    """
+    Append product details row in <csv_file_path>
+
+    If not exists, the file is created with ProductDetails attrs column names.
+    Column names are ordered in the same fashion as defined in ProductDetails class
+
+    Args:
+        product_details: object containing scraped details of a product
+        csv_file_path: path to the csv where new product will be added
+
+    Returns:
+        None
+    """
     parent_dir_name = os.path.dirname(csv_file_path)
     os.makedirs(parent_dir_name, exist_ok=True)
 
@@ -35,13 +48,20 @@ def append_product_details_to_csv(product_details: ProductDetails, csv_file_path
         writer.writerows([product_details_attr_dict.values()])
 
 
-def fhir_request_with_retries(method: str, url: str, **kwargs):
-    response = requests.request(method, url, **kwargs)
-    response.raise_for_status()
-    return response
-
-
 def get_page_structure(url: str, requests_delay: float) -> BeautifulSoup:
+    """
+    Send a request to retrieve page structure and convert it to a BeautifulSoup parsed document
+
+    Args:
+        url: url to retrieve contents from
+        requests_delay: time to sleep before sending the request
+
+    Raises:
+        HTTPError if the request status response is 4xx or 5xx
+
+    Returns:
+        BeautifulSoup object
+    """
     time.sleep(requests_delay)
     response = requests.get(url)
     response.raise_for_status()
@@ -57,15 +77,16 @@ def scrape_single_page_product_urls(page_number: int, page_size: int, requests_d
     Args:
         page_number: page to scrape urls for
         page_size: number of products shown per page
+        requests_delay: Delay between subsequent requests in seconds
+
+    Raises:
+        HTTPError
 
     Returns:
         list of product urls
     """
     page_url = settings.NEWEGG_DEALS_PAGE_URL.format(page_number=page_number, page_size=page_size)
-    try:
-        soup = get_page_structure(page_url, requests_delay=requests_delay)
-    except HTTPError as e:
-        raise e
+    soup = get_page_structure(page_url, requests_delay=requests_delay)
 
     product_list = soup.find("div", {"id": "Product_List"})
     return [product.find_next("a").get("href") for product in product_list]
@@ -75,13 +96,15 @@ def scrape_product_urls(product_count: int, page_size: int, requests_delay: floa
     """
     Retrieve URLs for <product_count> products
 
-    Iterates all the pages from 1 to 100 and scrapes the urls of all the listed products
+    Iterates all the pages from <first_page_number> to <NEWEGG_PRODUCT_CATALOG_LAST_PAGE_NUMBER>
+    and scrapes the urls of all the listed products
     until total of <product_count> product URLs are collected
 
     Args:
-
         product_count: number of products to retrieve URLs for
         page_size: number of products shown per page
+        requests_delay: Delay between subsequent requests in seconds
+        first_page_number: Starting page when iterating through the product catalog
 
     Returns:
         list of product urls with max length of <product_count>
@@ -109,14 +132,34 @@ def scrape_product_urls(product_count: int, page_size: int, requests_delay: floa
         return product_urls[:product_count]
 
 
-def get_product_description(soup: BeautifulSoup) -> str:
-    description_items = soup.find("div", {"class": "product-bullets"}).find_all("li")
+def find_product_description(product_page_main_section: BeautifulSoup) -> str:
+    """
+    Find the product description from the main section of the product page
+
+    Args:
+        product_page_main_section: parsed DOM document containing single section
+
+    Returns:
+        Text containing all the description items separated with white space
+    """
+    description_items = product_page_main_section.find("div", {"class": "product-bullets"}).find_all("li")
     return " ".join([item.text for item in description_items])
 
 
-def get_product_rating(soup: BeautifulSoup) -> str | None:
+def find_product_rating(product_page_main_section: BeautifulSoup) -> str:
+    """
+    Find the product rating from the main section of the product page
+
+    Args:
+        product_page_main_section: parsed DOM document containing single section
+
+    Returns:
+        Text field containing the product rating if exists or N/A
+    """
     try:
-        review_title_attr = soup.find("div", {"class": "product-rating"}).find("i").attrs.get("title")
+        review_title_attr = (
+            product_page_main_section.find("div", {"class": "product-rating"}).find("i").attrs.get("title")
+        )
     except AttributeError:
         logger.info("No reviews for product")
         return "N/A"
@@ -130,13 +173,36 @@ def get_product_rating(soup: BeautifulSoup) -> str | None:
         return "N/A"
 
 
-def get_product_seller_name(soup: BeautifulSoup):
-    seller_name = soup.find("div", {"class": "product-seller"}).find("a").text
+def find_product_seller_name(page_buy_section: BeautifulSoup):
+    """
+    Find the product seller name in the buy section of the product page
+
+    Args:
+        page_buy_section: parsed DOM document containing single section
+
+    Returns:
+        Name of the seller
+    """
+    seller_name = page_buy_section.find("div", {"class": "product-seller"}).find("a").text
     seller_name = seller_name.replace("Sold & Shipped by ", "")
     return seller_name
 
 
 def scrape_product_details(url: str, requests_delay: float) -> ProductDetails:
+    """
+    Scrape product details for a given product url
+
+    Args:
+        url: Url to scrape product details for
+        requests_delay: Delay between subsequent requests
+
+    Raises:
+        HTTPError
+
+    Returns:
+        ProductDetails object
+
+    """
     soup = get_page_structure(url=url, requests_delay=requests_delay)
 
     page_main_section = soup.find("div", {"class": "product-wrap"})
@@ -144,13 +210,13 @@ def scrape_product_details(url: str, requests_delay: float) -> ProductDetails:
     page_buy_section = soup.find("div", {"class": "product-buy-box"})
 
     product_title = page_main_section.find("h1", {"class": "product-title"}).text
-    product_description = get_product_description(page_main_section)
-    product_rating = get_product_rating(page_main_section)
+    product_description = find_product_description(page_main_section)
+    product_rating = find_product_rating(page_main_section)
 
     product_main_image_url = page_img_section.find("img", {"class": "product-view-img-original"}).attrs.get("src")
 
     product_final_price = page_buy_section.find("li", {"class": "price-current"}).text
-    product_seller_name = get_product_seller_name(page_buy_section)
+    product_seller_name = find_product_seller_name(page_buy_section)
 
     product_details = ProductDetails(
         url=url,
@@ -170,7 +236,20 @@ def scrape_and_store_products(
     page_size: int,
     requests_delay: float,
     first_page_number: int,
-):
+) -> None:
+    """
+    Scrape <product_count> products and store them in <file_path>
+
+    Args:
+        file_path: File path to store product
+        product_count: Number of products to scrape and store
+        page_size: Number of products per page when listing the product catalog
+        requests_delay: Delay between subsequent requests in seconds
+        first_page_number: Starting page when iterating through the product catalog
+
+    Returns:
+        None
+    """
     product_urls = scrape_product_urls(
         product_count=product_count,
         page_size=page_size,
