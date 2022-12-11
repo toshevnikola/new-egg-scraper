@@ -4,6 +4,8 @@ import time
 from dataclasses import dataclass
 
 import requests
+from tqdm import tqdm
+
 import settings
 from bs4 import BeautifulSoup
 from logger import logger
@@ -172,7 +174,6 @@ def find_product_rating(product_page_main_section: BeautifulSoup) -> str:
             product_page_main_section.find("div", {"class": "product-rating"}).find("i").attrs.get("title")
         )
     except Exception as e:
-        logger.warning(str(e))
         return "N/A"
     if not review_title_attr:
         return "N/A"
@@ -265,16 +266,19 @@ def scrape_and_store_products(
     Returns:
         None
     """
+    logger.info("Scraping product urls...")
     product_urls = scrape_product_urls(
         product_count=product_count,
         page_size=page_size,
         requests_delay=requests_delay,
         first_page_number=first_page_number,
     )
-    for count, product_url in enumerate(product_urls):
+    successfully_stored_products_count = 0
+    for product_url in tqdm(product_urls, desc="Scraping product details..."):
         try:
             product_details = scrape_product_details(product_url, requests_delay=requests_delay)
             append_product_details_to_csv(product_details=product_details, csv_file_path=file_path)
-            logger.debug(count)
+            successfully_stored_products_count += 1
         except HTTPError as e:
             logger.error(f"Skipping product {product_url}. Error: {str(e)}")
+    logger.info(f"Stored {successfully_stored_products_count} products in {file_path}.")

@@ -1,6 +1,7 @@
 # NewEgg Product Scraper
 Python script to scrape products from https://www.newegg.com/
 
+![NewEgg product scraper](scraper.png "NewEgg product scraper")
 ---
 
 ### How it works:

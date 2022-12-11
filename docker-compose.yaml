@@ -5,8 +5,7 @@ services:
     volumes:
       - ./docker-data:/app/data
     command:
-      - --product_count=2
+      - --product_count=500
       - --page_size=96
       - --first_page_number=1
       - --requests_delay=1
-      - --file_path=/app/data/test_path.csv

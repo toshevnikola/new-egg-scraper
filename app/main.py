@@ -36,7 +36,7 @@ if __name__ == "__main__":
         "--file_path",
         type=str,
         help="Path to store scraped data",
-        default=settings.DATA_DIR / f"product_{int(datetime.now().timestamp())}.csv",
+        default=settings.DATA_DIR / f"products_{int(datetime.now().timestamp())}.csv",
     )
     args = parser.parse_args()
 
