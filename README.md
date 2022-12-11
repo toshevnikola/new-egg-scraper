@@ -9,7 +9,7 @@ Product URLs are stored in-memory and when a total of `num_products` are collect
 Details are scraped for each product and appended to a .csv file.
 
 Configurable arguments:
-- --num_products - How many product to scrape data for (defaul=500)
+- --product_count - How many product to scrape data for (defaul=500)
 - --page_size - How many products per page are shown when navigating through the catalog (default=96)
 - --first_page_number - Page number to start collecting products from, e.g --first_page_number=5, will skip pages 1 to 4 (default=1)
 - --requests_delay - Delay in seconds before sending a request to retieve a page. Helpful against scraping detectors (default=1)
