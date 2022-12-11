@@ -2,14 +2,12 @@ import csv
 import os
 import time
 from dataclasses import dataclass
-from pprint import pprint
 
 import requests
+import settings
 from bs4 import BeautifulSoup
+from logger import logger
 from requests import HTTPError
-
-from app import settings
-from app.logger import logger
 
 
 @dataclass
@@ -39,7 +37,6 @@ def append_product_details_to_csv(product_details: ProductDetails, csv_file_path
     """
     parent_dir_name = os.path.dirname(csv_file_path)
     os.makedirs(parent_dir_name, exist_ok=True)
-
     file_exists = os.path.exists(csv_file_path)
     with open(csv_file_path, "a") as f:
         writer = csv.writer(f)
@@ -94,7 +91,6 @@ def scrape_single_page_product_urls(page_number: int, page_size: int, requests_d
         return []
 
     urls = []
-    pprint(product_list)
     for product in product_list:
         a_tag = product.find_next("a")
         if a_tag:
@@ -175,7 +171,8 @@ def find_product_rating(product_page_main_section: BeautifulSoup) -> str:
         review_title_attr = (
             product_page_main_section.find("div", {"class": "product-rating"}).find("i").attrs.get("title")
         )
-    except Exception:
+    except Exception as e:
+        logger.warning(str(e))
         return "N/A"
     if not review_title_attr:
         return "N/A"
