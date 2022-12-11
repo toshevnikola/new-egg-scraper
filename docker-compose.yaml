@@ -1,0 +1,12 @@
+version: '3.8'
+services:
+  scraper:
+    build: .
+    volumes:
+      - ./docker-data:/app/data
+    command:
+      - --product_count=2
+      - --page_size=96
+      - --first_page_number=1
+      - --requests_delay=1
+      - --file_path=/app/data/test_path.csv

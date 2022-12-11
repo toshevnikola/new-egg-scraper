@@ -2,6 +2,8 @@ Run locally:
 python app/main.py
 
 Run in Docker container:
-docker run --volume=/home/loka/PycharmProjects/scraper/data:/app/data scraper-app:v1
+docker run --rm --volume=/home/loka/PycharmProjects/scraper/docker-data:/app/data scraper-app:v1
 
+Run with docker-compose:
+docker-compose up --build
 
