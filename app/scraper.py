@@ -4,12 +4,11 @@ import time
 from dataclasses import dataclass
 
 import requests
-from tqdm import tqdm
-
 import settings
 from bs4 import BeautifulSoup
 from logger import logger
 from requests import HTTPError
+from tqdm import tqdm
 
 
 @dataclass
@@ -63,10 +62,11 @@ def get_page_structure(url: str, requests_delay: float) -> BeautifulSoup:
         BeautifulSoup object
     """
     time.sleep(requests_delay)
-    response = requests.get(url)
+    response = requests.get(url, timeout=30)
     response.raise_for_status()
     page_content = response.content
     soup = BeautifulSoup(page_content, "html.parser")
+
     return soup
 
 
@@ -149,13 +149,12 @@ def find_product_description(product_page_main_section: BeautifulSoup) -> str:
         product_page_main_section: parsed DOM document containing single section
 
     Returns:
-        Text containing all the description items separated with white space
+        Text containing all the description items separated with white space or MISSING_VALUE_STR
     """
     try:
         description_items = product_page_main_section.find("div", {"class": "product-bullets"}).find_all("li")
-    except Exception as e:
-        logger.warning(str(e))
-        description_items = []
+    except AttributeError:
+        return settings.MISSING_VALUE_STR
     return " ".join([item.text for item in description_items])
 
 
@@ -167,25 +166,58 @@ def find_product_rating(product_page_main_section: BeautifulSoup) -> str:
         product_page_main_section: parsed DOM document containing single section
 
     Returns:
-        Text field containing the product rating if exists or N/A
+        Text field containing the product rating if exists or MISSING_VALUE_STR
     """
     try:
         review_title_attr = (
             product_page_main_section.find("div", {"class": "product-rating"}).find("i").attrs.get("title")
         )
-    except Exception as e:
-        return "N/A"
+    except AttributeError:
+        return settings.MISSING_VALUE_STR
     if not review_title_attr:
-        return "N/A"
+        return settings.MISSING_VALUE_STR
     rating = review_title_attr.split(" out of ")[0]
     try:
         float(rating)
         return rating
     except ValueError:
-        return "N/A"
+        return settings.MISSING_VALUE_STR
 
 
-def find_product_seller_name(page_buy_section: BeautifulSoup):
+def find_product_title(page_main_section: BeautifulSoup) -> str:
+    """
+    Find the product title in the main section of the product page
+
+    Args:
+        page_main_section: parsed DOM document containing single section
+
+    Returns:
+        Product title or MISSING_VALUE_STR
+
+    """
+    try:
+        return page_main_section.find("h1", {"class": "product-title"}).text
+    except AttributeError:
+        return settings.MISSING_VALUE_STR
+
+
+def find_product_main_img_url(page_img_section: BeautifulSoup) -> str:
+    """
+    Find product main img URL in the img section of the product page
+
+    Args:
+        page_img_section: parsed DOM document containing single section
+
+    Returns:
+        Product URL or MISSING_VALUE_STR
+    """
+    try:
+        return page_img_section.find("img", {"class": "product-view-img-original"}).attrs.get("src")
+    except AttributeError:
+        return settings.MISSING_VALUE_STR
+
+
+def find_product_seller_name(page_buy_section: BeautifulSoup) -> str:
     """
     Find the product seller name in the buy section of the product page
 
@@ -193,15 +225,30 @@ def find_product_seller_name(page_buy_section: BeautifulSoup):
         page_buy_section: parsed DOM document containing single section
 
     Returns:
-        Name of the seller
+        Name of the seller or MISSING_VALUE_STR
     """
     try:
         seller_name = page_buy_section.find("div", {"class": "product-seller"}).find("a").text
         seller_name = seller_name.replace("Sold & Shipped by ", "")
-    except Exception as e:
-        logger.warning(str(e))
-        seller_name = "N/A"
+    except AttributeError:
+        seller_name = settings.MISSING_VALUE_STR
     return seller_name
+
+
+def find_final_price(page_buy_section: BeautifulSoup) -> str:
+    """
+    Find the product final price in the buy section of the product page
+
+    Args:
+        page_buy_section: parsed DOM document containing single section
+
+    Returns:
+        Final price of the product or MISSING_VALUE_STR
+    """
+    try:
+        return page_buy_section.find("li", {"class": "price-current"}).text
+    except AttributeError:
+        return settings.MISSING_VALUE_STR
 
 
 def scrape_product_details(url: str, requests_delay: float) -> ProductDetails:
@@ -225,13 +272,13 @@ def scrape_product_details(url: str, requests_delay: float) -> ProductDetails:
     page_img_section = soup.find("div", {"class": "product-view"})
     page_buy_section = soup.find("div", {"class": "product-buy-box"})
 
-    product_title = page_main_section.find("h1", {"class": "product-title"}).text
+    product_title = find_product_title(page_main_section)
     product_description = find_product_description(page_main_section)
     product_rating = find_product_rating(page_main_section)
 
-    product_main_image_url = page_img_section.find("img", {"class": "product-view-img-original"}).attrs.get("src")
+    product_main_image_url = find_product_main_img_url(page_img_section)
 
-    product_final_price = page_buy_section.find("li", {"class": "price-current"}).text
+    product_final_price = find_final_price(page_buy_section)
     product_seller_name = find_product_seller_name(page_buy_section)
 
     product_details = ProductDetails(

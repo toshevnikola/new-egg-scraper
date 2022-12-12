@@ -8,5 +8,5 @@ NEWEGG_DEALS_PAGE_URL = (
     "https://www.newegg.com/Newegg-Deals/EventSaleStore/ID-9447/Page-{page_number}?PageSize={page_size}"
 )
 NEWEGG_PRODUCT_CATALOG_LAST_PAGE_NUMBER = 100
-
 DATA_DIR = Path(__file__).parent.parent / "data"
+MISSING_VALUE_STR = "N/A"
